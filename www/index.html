@@ -2,10 +2,17 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <style>
-        html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: black; overflow: hidden; }
-        #container { width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; }
+        html, body { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            background: black; overflow: hidden; 
+            -webkit-user-select: none; -webkit-touch-callout: none; 
+        }
+        #container { 
+            width: 100vw; height: 100vh; 
+            display: flex; align-items: center; justify-content: center; 
+        }
         ruffle-player { width: 100%; height: 100%; }
     </style>
     <script src="ruffle.js"></script>
@@ -17,14 +24,13 @@
             const ruffle = window.RufflePlayer.newest();
             const player = ruffle.createPlayer();
             document.getElementById("container").appendChild(player);
-            
-            // Game ko screen mein fit karne ka asal code
             player.load({
                 url: "app://localhost/game.swf",
                 scale: "showAll",
                 letterbox: "on",
                 quality: "high",
-                autoplay: "on"
+                autoplay: "on",
+                unmuteOverlay: "hidden" // YEH BADA MUTE ICON HATA DEGA
             });
         });
     </script>
