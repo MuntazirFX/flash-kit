@@ -4,9 +4,11 @@ jobs:
   build:
     runs-on: macos-latest
     steps:
-    - uses: actions/upload-artifact@v4
+    - uses: actions/checkout@v4
+    
     - name: Install XcodeGen
       run: brew install xcodegen
+      
     - name: Generate Xcode Project
       run: |
         echo "name: FlashKit
@@ -22,14 +24,16 @@ jobs:
             settings:
               GENERATE_INFOPLIST_FILE: YES" > project.yml
         xcodegen generate
+        
     - name: Build App
       run: |
         xcodebuild -project FlashKit.xcodeproj -scheme FlashKit -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO
         mkdir Payload
         cp -r build/Release-iphoneos/FlashKit.app Payload/
         zip -r FlashKit.ipa Payload
+        
     - name: Upload IPA
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: FlashKit-IPA
         path: FlashKit.ipa
