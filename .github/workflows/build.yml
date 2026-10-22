@@ -20,8 +20,10 @@ jobs:
             platform: iOS
             deploymentTarget: \"15.0\"
             sources: [Sources]
+            resources: [www]
             settings:
-              GENERATE_INFOPLIST_FILE: YES" > project.yml
+              GENERATE_INFOPLIST_FILE: YES
+              INFOPLIST_KEY_UILaunchScreen_Generation: YES" > project.yml
         xcodegen generate
         
     - name: Build App
