@@ -17,6 +17,8 @@
             const ruffle = window.RufflePlayer.newest();
             const player = ruffle.createPlayer();
             document.getElementById("container").appendChild(player);
+            
+            // Game ko screen mein fit karne ka asal code
             player.load({
                 url: "app://localhost/game.swf",
                 scale: "showAll",
