@@ -21,7 +21,7 @@ final class AppSchemeHandler: NSObject, WKURLSchemeHandler {
         }
         let ext = (path as NSString).pathExtension.lowercased()
         let mime = ["html": "text/html", "js": "text/javascript", "wasm": "application/wasm",
-                    "swf": "application/x-shockwave-flash"][ext] ?? "application/octet-stream"
+                    "json": "application/json", "swf": "application/x-shockwave-flash"][ext] ?? "application/octet-stream"
         let resp = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": mime, "Content-Length": "\(body.count)",
                            "Access-Control-Allow-Origin": "*"])!
@@ -30,7 +30,7 @@ final class AppSchemeHandler: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {}
 }
 
-// MARK: - SWF Data
+// MARK: - SWF Metadata
 struct SWFInfo: Codable {
     var title: String
     var width: Int
@@ -46,12 +46,11 @@ enum SWFMeta {
         return s.isEmpty ? raw : s.capitalized
     }
     static func readInfo(_ url: URL) -> SWFInfo {
-        let fallback = cleanName(url.deletingPathExtension().lastPathComponent)
-        return SWFInfo(title: fallback, width: 800, height: 600, version: 0)
+        return SWFInfo(title: cleanName(url.deletingPathExtension().lastPathComponent), width: 800, height: 600, version: 0)
     }
 }
 
-// MARK: - Player Engine
+// MARK: - Player
 final class WebHolder {
     weak var web: WKWebView?
     func key(_ type: String, code: String, key: String) {
@@ -75,13 +74,10 @@ struct GameView: UIViewRepresentable {
     func updateUIView(_ wv: WKWebView, context: Context) {}
 }
 
-// MARK: - Controls
 struct KeyButton: View {
-    var label: String = ""
-    var icon: String? = nil
+    var label: String = ""; var icon: String? = nil
     let code: String; let key: String; var size: CGFloat = 58
-    let holder: WebHolder
-    @State private var down = false
+    let holder: WebHolder; @State private var down = false
     var body: some View {
         Group { if let icon = icon { Image(systemName: icon).font(.system(size: size * 0.38)) } else { Text(label).font(.system(size: size * 0.30, weight: .bold)) } }
         .foregroundColor(.white).frame(width: size, height: size)
@@ -143,17 +139,21 @@ struct DocPicker: UIViewControllerRepresentable {
 
 extension URL: Identifiable { public var id: String { absoluteString } }
 
-// MARK: - Library
+// MARK: - Library & Downloader
 final class Library: ObservableObject {
     @Published var files: [URL] = []
+    @Published var isDownloading = false
+    
     let dir: URL = {
         let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Games")
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         return d
     }()
     init() { refresh() }
+    
     func refresh() { files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))?.filter { $0.pathExtension.lowercased() == "swf" } ?? [] }
     func title(_ url: URL) -> String { SWFMeta.cleanName(url.deletingPathExtension().lastPathComponent) }
+    
     func add(_ urls: [URL]) {
         for u in urls {
             let ok = u.startAccessingSecurityScopedResource()
@@ -163,36 +163,88 @@ final class Library: ObservableObject {
         }
         refresh()
     }
+    
+    func downloadGame(from url: URL) {
+        isDownloading = true
+        URLSession.shared.downloadTask(with: url) { localUrl, response, error in
+            DispatchQueue.main.async {
+                self.isDownloading = false
+                if let localUrl = localUrl {
+                    let filename = url.lastPathComponent.contains(".swf") ? url.lastPathComponent : "\(UUID().uuidString).swf"
+                    let dest = self.dir.appendingPathComponent(filename)
+                    try? FileManager.default.moveItem(at: localUrl, to: dest)
+                    self.refresh()
+                }
+            }
+        }.resume()
+    }
+    
     func remove(_ url: URL) { try? FileManager.default.removeItem(at: url); refresh() }
 }
 
-// MARK: - UI (FlashPoint Style)
+// MARK: - Archive Browser (WebView)
+struct ArchiveBrowser: UIViewRepresentable {
+    @ObservedObject var lib: Library
+    @Binding var showAlert: Bool
+    
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    
+    func makeUIView(context: Context) -> WKWebView {
+        let wv = WKWebView()
+        wv.navigationDelegate = context.coordinator
+        // OldSWF is a great archive for retro games
+        wv.load(URLRequest(url: URL(string: "https://oldswf.com")!))
+        return wv
+    }
+    
+    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    
+    class Coordinator: NSObject, WKNavigationDelegate {
+        var parent: ArchiveBrowser
+        init(_ parent: ArchiveBrowser) { self.parent = parent }
+        
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            if let url = navigationAction.request.url, url.pathExtension.lowercased() == "swf" {
+                // Intercept .swf download
+                parent.lib.downloadGame(from: url)
+                parent.showAlert = true
+                decisionHandler(.cancel)
+                return
+            }
+            decisionHandler(.allow)
+        }
+    }
+}
+
+// MARK: - Main UI
 struct ContentView: View {
     @StateObject private var lib = Library()
     @State private var picking = false
     @State private var query = ""
     @State private var playing: URL?
     @State private var selectedGame: URL?
+    @State private var selectedTab = 0 // 0 = Library, 1 = Archive
+    @State private var showDownloadAlert = false
     
     var filtered: [URL] {
         query.isEmpty ? lib.files : lib.files.filter { lib.title($0).localizedCaseInsensitiveContains(query) }
     }
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                Color(red: 0.05, green: 0.03, blue: 0.09).ignoresSafeArea()
+        ZStack(alignment: .bottom) {
+            Color(red: 0.05, green: 0.03, blue: 0.09).ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Top Header
+                HStack {
+                    Text("Flash").foregroundColor(.white) + Text("Kit").foregroundColor(.orange)
+                }
+                .font(.system(size: 34, weight: .black))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20).padding(.top, 10)
                 
-                VStack(spacing: 0) {
-                    // Header
-                    HStack {
-                        Text("Flash").foregroundColor(.white) + Text("Kit").foregroundColor(.orange)
-                    }
-                    .font(.system(size: 34, weight: .black))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20).padding(.top, 10)
-                    
-                    // Search & Filter
+                if selectedTab == 0 {
+                    // --- LIBRARY VIEW ---
                     HStack {
                         Image(systemName: "magnifyingglass").foregroundColor(.gray)
                         TextField("Search games...", text: $query).foregroundColor(.white)
@@ -201,20 +253,17 @@ struct ContentView: View {
                     .padding(12).background(Color.white.opacity(0.08)).cornerRadius(14)
                     .padding(.horizontal, 20).padding(.top, 10)
                     
-                    // Categories (Placeholder)
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
                             CategoryChip(title: "All Games", isSelected: true)
                             CategoryChip(title: "Arcade", isSelected: false)
                             CategoryChip(title: "Action", isSelected: false)
-                            CategoryChip(title: "Favorites", isSelected: false)
                         }.padding(.horizontal, 20).padding(.vertical, 15)
                     }
 
-                    // Grid
                     if lib.files.isEmpty {
                         Spacer()
-                        Text("Library is empty. Import SWF files!").foregroundColor(.gray)
+                        Text("Library is empty. Import or Download games!").foregroundColor(.gray)
                         Spacer()
                     } else {
                         ScrollView {
@@ -231,34 +280,76 @@ struct ContentView: View {
                                         }
                                     }
                                 }
-                            }.padding(.horizontal, 20).padding(.bottom, 100)
+                            }.padding(.horizontal, 20).padding(.bottom, 120)
+                        }
+                    }
+                } else {
+                    // --- ARCHIVE EXPLORER VIEW ---
+                    ZStack {
+                        ArchiveBrowser(lib: lib, showAlert: $showDownloadAlert)
+                            .cornerRadius(20)
+                            .padding(.horizontal, 10)
+                            .padding(.bottom, 10)
+                        
+                        if lib.isDownloading {
+                            VStack {
+                                ProgressView().scaleEffect(1.5).padding()
+                                Text("Downloading Game...").foregroundColor(.white).font(.headline)
+                            }
+                            .padding(30)
+                            .background(Color.black.opacity(0.8))
+                            .cornerRadius(20)
                         }
                     }
                 }
-                
-                // Floating Button
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        Button(action: { picking = true }) {
-                            Image(systemName: "plus").font(.title.bold()).foregroundColor(.white)
-                                .frame(width: 60, height: 60)
-                                .background(LinearGradient(colors: [.orange, .yellow], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                .clipShape(Circle()).shadow(color: .orange.opacity(0.5), radius: 10)
-                        }.padding(25)
-                    }
-                }
             }
-            .navigationBarHidden(true)
+            
+            // Bottom Navigation Bar
+            HStack {
+                Spacer()
+                Button(action: { selectedTab = 0 }) {
+                    VStack(spacing: 4) {
+                        Image(systemName: "gamecontroller.fill")
+                        Text("My Library").font(.caption2.bold())
+                    }.foregroundColor(selectedTab == 0 ? .orange : .gray)
+                }
+                
+                Spacer()
+                
+                // Plus Button (Only on Library Tab)
+                if selectedTab == 0 {
+                    Button(action: { picking = true }) {
+                        Image(systemName: "plus").font(.title.bold()).foregroundColor(.white)
+                            .frame(width: 60, height: 60)
+                            .background(LinearGradient(colors: [.orange, .yellow], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .clipShape(Circle()).shadow(color: .orange.opacity(0.5), radius: 10)
+                    }.offset(y: -20)
+                } else {
+                    Color.clear.frame(width: 60, height: 60).offset(y: -20)
+                }
+                
+                Spacer()
+                
+                Button(action: { selectedTab = 1 }) {
+                    VStack(spacing: 4) {
+                        Image(systemName: "safari.fill")
+                        Text("Archive").font(.caption2.bold())
+                    }.foregroundColor(selectedTab == 1 ? .orange : .gray)
+                }
+                Spacer()
+            }
+            .padding(.vertical, 12)
+            .background(Color(red: 0.1, green: 0.08, blue: 0.15))
+            .clipShape(Capsule())
+            .padding(.horizontal, 20)
+            .padding(.bottom, 10)
         }
         .sheet(isPresented: $picking) { DocPicker(onPick: { urls in picking = false; lib.add(urls) }) }
         .sheet(item: $selectedGame) { url in
-            // Game Details Sheet (FlashPoint Style)
             VStack(spacing: 20) {
                 Image(systemName: "gamecontroller.fill").font(.system(size: 60)).foregroundColor(.orange).padding(.top, 40)
                 Text(lib.title(url)).font(.largeTitle.bold()).foregroundColor(.white)
-                Text("Platform: Flash\nStatus: Playable\nSource: Local Import").foregroundColor(.gray).multilineTextAlignment(.center)
+                Text("Platform: Flash\nSource: Local").foregroundColor(.gray).multilineTextAlignment(.center)
                 
                 Button {
                     GameStore.data = try? Data(contentsOf: url)
@@ -269,10 +360,22 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity).padding()
                         .background(Color.orange).cornerRadius(16).padding(.horizontal, 40)
                 }
+                
+                Button(role: .destructive) {
+                    lib.remove(url)
+                    selectedGame = nil
+                } label: {
+                    Text("Delete Game").foregroundColor(.red)
+                }
                 Spacer()
             }.background(Color(red: 0.05, green: 0.03, blue: 0.09).ignoresSafeArea())
         }
         .fullScreenCover(item: $playing) { url in PlayerScreen(name: lib.title(url)) { playing = nil } }
+        .alert("Download Started!", isPresented: $showDownloadAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("The game is downloading in the background. It will appear in your library shortly.")
+        }
     }
 }
 
