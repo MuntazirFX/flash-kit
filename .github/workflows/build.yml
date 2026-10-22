@@ -1,0 +1,35 @@
+name: Build FlashKit
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install XcodeGen
+      run: brew install xcodegen
+    - name: Generate Xcode Project
+      run: |
+        echo "name: FlashKit
+        options:
+          bundleIdPrefix: com.muntazir
+        targets:
+          FlashKit:
+            type: application
+            platform: iOS
+            deploymentTarget: \"15.0\"
+            sources: [Sources]
+            resources: [www]
+            settings:
+              GENERATE_INFOPLIST_FILE: YES" > project.yml
+        xcodegen generate
+    - name: Build App
+      run: |
+        xcodebuild -project FlashKit.xcodeproj -scheme FlashKit -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO
+        mkdir Payload
+        cp -r build/Release-iphoneos/FlashKit.app Payload/
+        zip -r FlashKit.ipa Payload
+    - name: Upload IPA
+      uses: actions/upload-artifact@v3
+      with:
+        name: FlashKit-IPA
+        path: FlashKit.ipa
