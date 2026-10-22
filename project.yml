@@ -1,0 +1,27 @@
+name: FlashKit
+options:
+  bundleIdPrefix: com.muntazir
+  deploymentTarget:
+    iOS: "15.0"
+targets:
+  FlashKit:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+    resources:
+      - path: www
+        type: folder
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.muntazir.flashkit
+        PRODUCT_NAME: FlashKit
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: FlashKit
+        INFOPLIST_KEY_UIUserInterfaceStyle: Dark
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.games
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads: YES
+        CODE_SIGNING_ALLOWED: NO
