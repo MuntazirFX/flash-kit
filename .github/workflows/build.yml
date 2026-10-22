@@ -20,18 +20,19 @@ jobs:
             platform: iOS
             deploymentTarget: \"15.0\"
             sources: [Sources]
-            resources: [www]
             settings:
               GENERATE_INFOPLIST_FILE: YES" > project.yml
         xcodegen generate
         
     - name: Build App
       run: |
-        # Yahan humne -derivedDataPath build add kiya hai taake app ek fix jagah bane
         xcodebuild -project FlashKit.xcodeproj -scheme FlashKit -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO -derivedDataPath build
         mkdir Payload
-        # Ab app yahan milegi
         cp -r build/Build/Products/Release-iphoneos/FlashKit.app Payload/
+        
+        # Yeh line force karegi ke www folder (Ruffle) app ke andar jaye
+        cp -r www Payload/FlashKit.app/www
+        
         zip -r FlashKit.ipa Payload
         
     - name: Upload IPA
