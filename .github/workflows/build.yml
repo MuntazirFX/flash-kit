@@ -27,9 +27,11 @@ jobs:
         
     - name: Build App
       run: |
-        xcodebuild -project FlashKit.xcodeproj -scheme FlashKit -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO
+        # Yahan humne -derivedDataPath build add kiya hai taake app ek fix jagah bane
+        xcodebuild -project FlashKit.xcodeproj -scheme FlashKit -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO -derivedDataPath build
         mkdir Payload
-        cp -r build/Release-iphoneos/FlashKit.app Payload/
+        # Ab app yahan milegi
+        cp -r build/Build/Products/Release-iphoneos/FlashKit.app Payload/
         zip -r FlashKit.ipa Payload
         
     - name: Upload IPA
