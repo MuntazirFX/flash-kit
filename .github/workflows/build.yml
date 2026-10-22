@@ -1,44 +1,84 @@
+
 name: Build FlashKit
-on: [push, workflow_dispatch]
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: macos-latest
+
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install XcodeGen
-      run: brew install xcodegen
-      
-    - name: Generate Xcode Project
-      run: |
-        echo "name: FlashKit
-        options:
-          bundleIdPrefix: com.muntazir
-        targets:
-          FlashKit:
-            type: application
-            platform: iOS
-            deploymentTarget: \"15.0\"
-            sources: [Sources]
-            resources: [www]
-            settings:
-              GENERATE_INFOPLIST_FILE: YES
-              INFOPLIST_KEY_UILaunchScreen_Generation: YES" > project.yml
-        xcodegen generate
-        
-    - name: Build App
-      run: |
-        xcodebuild -project FlashKit.xcodeproj -scheme FlashKit -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO -derivedDataPath build
-        mkdir Payload
-        cp -r build/Build/Products/Release-iphoneos/FlashKit.app Payload/
-        
-        # Yeh line force karegi ke www folder (Ruffle) app ke andar jaye
-        cp -r www Payload/FlashKit.app/www
-        
-        zip -r FlashKit.ipa Payload
-        
-    - name: Upload IPA
-      uses: actions/upload-artifact@v4
-      with:
-        name: FlashKit-IPA
-        path: FlashKit.ipa
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          xcodebuild -version
+          xcode-select -p
+
+      - name: Install XcodeGen
+        run: |
+          brew install xcodegen
+
+      - name: Validate project files
+        run: |
+          test -f project.yml
+          test -f Sources/App.swift
+          test -f www/index.html
+          test -f www/ruffle.js
+          xcodegen generate
+
+      - name: Build FlashKit
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project FlashKit.xcodeproj \
+            -scheme FlashKit \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee build.log
+
+      - name: Package unsigned IPA
+        if: success()
+        run: |
+          APP_PATH="build/Build/Products/Release-iphoneos/FlashKit.app"
+
+          test -d "$APP_PATH"
+          mkdir -p "$APP_PATH/www"
+
+          cp -R www/. "$APP_PATH/www/"
+
+          test -f "$APP_PATH/www/index.html"
+          test -f "$APP_PATH/www/ruffle.js"
+
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/FlashKit.app
+
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent \
+            Payload FlashKit-unsigned.ipa
+
+      - name: Upload IPA
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlashKit-unsigned-IPA
+          path: FlashKit-unsigned.ipa
+          if-no-files-found: error
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlashKit-build-log
+          path: build.log
+          if-no-files-found: ignore
