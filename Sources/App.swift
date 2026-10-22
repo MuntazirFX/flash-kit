@@ -834,15 +834,26 @@ struct ContentView: View {
                 Text("Settings save automatically on this device. Save and reload confirms the current saved configuration.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section("About") {
-                LabeledContent("App", value: "FlashKit")
-                LabeledContent("Library", value: "Local / offline")
-                LabeledContent("Player", value: "Ruffle")
+            Section(header: Text("About")) {
+                HStack {
+                    Text("App")
+                    Spacer()
+                    Text("FlashKit").foregroundColor(.secondary)
+                }
+                HStack {
+                    Text("Library")
+                    Spacer()
+                    Text("Local / offline").foregroundColor(.secondary)
+                }
+                HStack {
+                    Text("Player")
+                    Spacer()
+                    Text("Ruffle").foregroundColor(.secondary)
+                }
                 Text("Only download games you have permission to use. Some sites block downloads or require sign-in.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
-        .scrollContentBackground(.hidden)
         .background(FlashKitTheme.background)
         .alert("Settings saved", isPresented: $showSettingsAlert) {
             Button("OK", role: .cancel) {}
@@ -902,7 +913,6 @@ struct ContentView: View {
             Spacer()
         }
         .padding(24).background(FlashKitTheme.background.ignoresSafeArea())
-        .presentationDetents([.medium, .large])
     }
 
     private func normalizedAddress(_ value: String) -> String {
