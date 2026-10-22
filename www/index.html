@@ -1,38 +1,87 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <style>
-        html, body { 
-            margin: 0; padding: 0; width: 100%; height: 100%; 
-            background: black; overflow: hidden; 
-            -webkit-user-select: none; -webkit-touch-callout: none; 
-        }
-        #container { 
-            width: 100vw; height: 100vh; 
-            display: flex; align-items: center; justify-content: center; 
-        }
-        ruffle-player { width: 100%; height: 100%; }
-    </style>
-    <script src="ruffle.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>FlashKit Player</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000; }
+    #container { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:#000; }
+    ruffle-player { width:100%; height:100%; }
+    #hud { position:fixed; z-index:10; top:env(safe-area-inset-top, 8px); right:10px; padding:4px 7px;
+      border-radius:7px; color:#ffd21c; background:rgba(0,0,0,.48); font:11px -apple-system,BlinkMacSystemFont,sans-serif;
+      pointer-events:none; }
+    #error { display:none; position:fixed; z-index:20; left:16px; right:16px; top:18%; padding:16px;
+      color:#fff; background:#241b12; border:1px solid #ffd21c; border-radius:12px;
+      font:14px -apple-system,BlinkMacSystemFont,sans-serif; }
+  </style>
+  <script src="ruffle.js"></script>
 </head>
 <body>
-    <div id="container"></div>
-    <script>
-        window.addEventListener("load", () => {
-            const ruffle = window.RufflePlayer.newest();
-            const player = ruffle.createPlayer();
-            document.getElementById("container").appendChild(player);
-            player.load({
-                url: "app://localhost/game.swf",
-                scale: "showAll",
-                letterbox: "on",
-                quality: "high",
-                autoplay: "on",
-                unmuteOverlay: "hidden" // YEH BADA MUTE ICON HATA DEGA
-            });
-        });
-    </script>
+  <div id="container"></div>
+  <div id="hud">Render FPS: --</div>
+  <div id="error"></div>
+  <script>
+    (() => {
+      const params = new URLSearchParams(location.search);
+      let quality = params.get('quality') || 'high';
+      const hud = document.getElementById('hud');
+      const error = document.getElementById('error');
+      let player;
+      let paused = false;
+
+      function showError(message) {
+        error.textContent = message;
+        error.style.display = 'block';
+      }
+
+      function boot() {
+        if (!window.RufflePlayer || !window.RufflePlayer.newest) {
+          showError('Ruffle could not load. Check that the www/ruffle.js and wasm files are included in the app bundle.');
+          return;
+        }
+        try {
+          const ruffle = window.RufflePlayer.newest();
+          player = ruffle.createPlayer();
+          player.style.width = '100%';
+          player.style.height = '100%';
+          document.getElementById('container').appendChild(player);
+          window.flashKitReload = () => {
+            paused = false;
+            try { player.load({url:'app://localhost/game.swf', scale:'showAll', letterbox:'on', quality, autoplay:'on', unmuteOverlay:'hidden'}); }
+            catch (e) { showError('Could not restart this SWF: ' + e.message); }
+          };
+          window.flashKitPause = () => { paused = true; try { player.pause(); } catch (_) {} };
+          window.flashKitSetQuality = (value) => { if (['low','medium','high'].includes(value) && value !== quality) { quality = value; window.flashKitReload(); } };
+          window.flashKitResume = () => { paused = false; try { player.play(); } catch (_) {} };
+          player.load({
+            url: 'app://localhost/game.swf',
+            scale: 'showAll',
+            letterbox: 'on',
+            quality,
+            autoplay: 'on',
+            unmuteOverlay: 'hidden'
+          }).catch?.(e => showError('Ruffle could not open this game: ' + e.message));
+        } catch (e) {
+          showError('Player startup failed: ' + e.message);
+        }
+      }
+
+      let frames = 0, last = performance.now();
+      function countFrames(now) {
+        frames++;
+        if (now - last >= 1000) {
+          hud.textContent = 'Render FPS: ' + Math.round(frames * 1000 / (now - last));
+          frames = 0;
+          last = now;
+        }
+        requestAnimationFrame(countFrames);
+      }
+      requestAnimationFrame(countFrames);
+      window.addEventListener('load', boot);
+    })();
+  </script>
 </body>
 </html>
